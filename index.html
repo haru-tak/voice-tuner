@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>声のチューナー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: 静かな練習道具。計器のように正確で、余計な飾りなし
+   IDEA: 和の調律具＋卓上のハードウェアチューナー
+   PICTURE: 声質マップ（乾き×抜け）と、流れるピッチ曲線
+   COLOUR and TYPE: 和紙の地／墨、朱を一点、藍をターゲットに。Zen Kaku Gothic New
+   LAYOUT: 操作バー → マップ＋読み取り → ピッチ曲線 → テイク一覧 */
+:root{color-scheme:light dark;
+--bg:light-dark(#f2eee5,#121211);--panel:light-dark(#e7e1d4,#1c1c1a);--ink:light-dark(#1b1a18,#ece7dc);
+--mute:light-dark(#6f6a60,#99938a);--line:light-dark(#cfc7b6,#34322e);--shu:#d9482b;--ai:light-dark(#2f4a6b,#86a8cf)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Zen Kaku Gothic New",system-ui,sans-serif;overflow-x:clip}
+.band{padding:clamp(18px,3vw,36px) max(4vw,16px)}
+header.band{padding-bottom:8px}
+h1{font-size:clamp(30px,5vw,44px);line-height:1.05;margin:0 0 6px;text-wrap:balance}
+h1 span{color:var(--shu)}
+header p{margin:0;color:var(--mute);max-width:62ch}
+h2{font-size:16px;margin:0 0 10px;font-weight:700}
+.bar-c{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding-top:12px;padding-bottom:12px}
+button,.filebtn{font:inherit;font-size:16px;min-height:44px;padding:0 18px;border-radius:999px;border:1.5px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+button.main{background:var(--ink);color:var(--bg)}
+button.rec{border-color:var(--shu);color:var(--shu)}
+button.rec.on{background:var(--shu);color:#fff}
+button:disabled{opacity:.35;cursor:default}
+button:focus-visible,.filebtn:focus-within{outline:3px solid var(--ai);outline-offset:2px}
+.filebtn input{position:absolute;opacity:0;width:1px;height:1px}
+.small{min-height:36px;padding:0 12px;font-size:14px}
+#status{flex-basis:100%;color:var(--mute);font-size:14px;margin:2px 0 0}
+#status.err{color:var(--shu)}
+.grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;padding-top:4px}
+.panel{background:var(--panel);border-radius:14px;padding:16px}
+.fig{position:relative;min-height:340px}.fig>canvas{position:absolute;inset:0;width:100%;height:100%}
+#pitchFig{min-height:260px}
+.note{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+#note{font-size:clamp(56px,9vw,88px);line-height:1;font-weight:700;font-variant-numeric:tabular-nums}
+#cents{font-size:22px;font-variant-numeric:tabular-nums}
+#hz{color:var(--mute);font-size:14px;white-space:nowrap}
+.cbar{position:relative;height:10px;border-radius:5px;background:var(--line);margin:4px 0 18px}
+.cbar::after{content:"";position:absolute;left:50%;top:-4px;bottom:-4px;width:2px;background:var(--ink)}
+#cdot{position:absolute;top:-3px;width:16px;height:16px;border-radius:50%;background:var(--shu);left:50%;transform:translateX(-50%);transition:left .08s}
+.row{display:grid;grid-template-columns:3.6em minmax(0,1fr) 5.4em;gap:10px;align-items:center;margin:10px 0}
+.lab{font-weight:700;font-size:15px}
+.mb{position:relative;height:14px;border-radius:7px;background:var(--line);overflow:visible}
+.mb i{position:absolute;left:0;top:0;bottom:0;border-radius:7px;background:var(--ink);width:0;transition:width .1s}
+.mb b{position:absolute;top:-5px;bottom:-5px;width:3px;background:var(--ai);border-radius:2px;display:none}
+.val{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:15px}
+.hint{font-size:13px;color:var(--mute);margin:4px 0 0}
+#tgt{font-size:14px;color:var(--ai);margin-top:12px}
+.takes{display:grid;gap:10px}
+.take{background:var(--panel);border-radius:12px;padding:12px 14px;display:grid;gap:8px}
+.take .hd{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:baseline}
+.take .nm{font-weight:700;overflow-wrap:anywhere}
+.stats{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:14px;font-variant-numeric:tabular-nums}
+.stats span{white-space:nowrap}
+.d{color:var(--mute)}.d.up{color:var(--ai)}.d.dn{color:var(--shu)}
+.take .act{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+audio{height:36px;max-width:100%}
+.empty{color:var(--mute);font-size:14px}
+details{max-width:70ch}summary{cursor:pointer;font-weight:700;min-height:44px;display:flex;align-items:center}
+details p,details li{color:var(--mute);font-size:15px}
+@media(max-width:760px){.grid{grid-template-columns:minmax(0,1fr)}.fig{min-height:300px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="band">
+<h1>声の<span>チューナー</span></h1>
+<p>ピッチと声質（乾き・抜け・揺れ）を同時に見る練習道具。ターゲットの声を決めて、今の声との差を詰めていきます。</p>
+</header>
+
+<div class="band bar-c">
+<button id="mic" class="main">マイクを開始</button>
+<button id="rec" class="rec" disabled>● 録音</button>
+<label class="filebtn">録音ファイルを解析<input id="file" type="file" accept="audio/*"></label>
+<button id="setT" class="small">直近5秒をターゲットに</button>
+<button id="clrT" class="small">ターゲット解除</button>
+<p id="status">マイクで歌うか、録音ファイル（m4a・wav・mp3）を読み込んでください。</p>
+</div>
+
+<main class="band grid" style="padding-top:0">
+<section class="panel">
+<h2>声質マップ</h2>
+<div class="fig" id="mapFig"><canvas id="map"></canvas></div>
+<p class="hint">右へ行くほど息漏れが少なく乾いた声、上へ行くほど2〜4kHzの芯が強い声。</p>
+</section>
+<section class="panel">
+<h2>いまの声</h2>
+<div class="note"><span id="note">–</span><span id="cents"></span><span id="hz"></span></div>
+<div class="cbar" aria-hidden="true"><span id="cdot"></span></div>
+<div class="row"><span class="lab">乾き</span><div class="mb"><i id="bH"></i><b id="tH"></b></div><span class="val" id="vH">–</span></div>
+<div class="row"><span class="lab">抜け</span><div class="mb"><i id="bP"></i><b id="tP"></b></div><span class="val" id="vP">–</span></div>
+<div class="row"><span class="lab">揺れ</span><div class="mb"><i id="bW"></i><b id="tW"></b></div><span class="val" id="vW">–</span></div>
+<div class="row"><span class="lab">音量</span><div class="mb"><i id="bV"></i></div><span class="val" id="vV">–</span></div>
+<p id="tgt">ターゲット未設定</p>
+</section>
+</main>
+
+<section class="band" style="padding-top:0">
+<div class="panel">
+<h2 id="pitchTitle">ピッチ曲線（直近8秒）</h2>
+<div class="fig" id="pitchFig"><canvas id="pitch"></canvas></div>
+<p class="hint">横線は半音。朱の線ほど乾いた声で歌えているところ。</p>
+</div>
+</section>
+
+<section class="band" style="padding-top:0">
+<h2>テイク</h2>
+<div class="takes" id="takes"><p class="empty">録音したテイクや解析したファイルがここに並びます。</p></div>
+</section>
+
+<section class="band" style="padding-top:0">
+<details><summary>指標の見かた</summary>
+<ul>
+<li><b>乾き（HNR）</b>：声の周期成分と雑音（息）の比。高いほど息漏れが少なく芯がある。15dB前後は息っぽめ、20dB超で乾いた印象に近づく。</li>
+<li><b>抜け</b>：80Hz〜8kHz全体のうち2〜4kHzが占める割合（dB）。高いほど声が前に出て、こもりが減る。</li>
+<li><b>揺れ</b>：0.3秒ごとのピッチの細かい揺れ（セント）。ロングトーンなら10セント以下がまっすぐの目安。こぶしやビブラートも揺れとして数えるので、意図した装飾のときは気にしなくてよい。</li>
+<li>数値はマイクや部屋の響きで変わる。比べるときは同じ場所・同じ距離で録ること。</li>
+</ul></details>
+</section>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const NOTES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const midiOf=f=>69+12*Math.log2(f/440);
+const nameOf=m=>{const r=Math.round(m);return NOTES[(r%12+12)%12]+(Math.floor(r/12)-1)};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const R={hnr:[0,30],pres:[-35,-5],wob:[0,50],vol:[-60,0]};
+const pct=(v,[a,b])=>Math.max(0,Math.min(100,(v-a)/(b-a)*100));
+const S={ctx:null,stream:null,an:null,run:false,hist:[],recFrames:null,mr:null,takes:[],view:null,sm:{h:null,p:null},target:null,n:0};
+try{S.target=JSON.parse(localStorage.getItem('vt-target')||'null')}catch(e){}
+
+const N=2048,HANN=new Float64Array(N),RE=new Float64Array(N),IM=new Float64Array(N),D=new Float64Array(N/2),NS=new Float64Array(N/2);
+for(let i=0;i<N;i++)HANN[i]=0.5-0.5*Math.cos(2*Math.PI*i/(N-1));
+function fft(re,im){const n=re.length;
+ for(let i=1,j=0;i<n;i++){let b=n>>1;for(;j&b;b>>=1)j^=b;j^=b;if(i<j){let t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t}}
+ for(let len=2;len<=n;len<<=1){const a=-2*Math.PI/len,wr=Math.cos(a),wi=Math.sin(a),h=len>>1;
+  for(let i=0;i<n;i+=len){let cr=1,ci=0;for(let k=0;k<h;k++){const p=i+k,q=p+h,tr=re[q]*cr-im[q]*ci,ti=re[q]*ci+im[q]*cr;
+   re[q]=re[p]-tr;im[q]=im[p]-ti;re[p]+=tr;im[p]+=ti;const t=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=t}}}}
+
+function analyze(buf,sr){
+ let e=0;for(let i=0;i<N;i++)e+=buf[i]*buf[i];
+ const db=20*Math.log10(Math.sqrt(e/N)+1e-9),fr={db,f0:0,hnr:null,pres:null};
+ if(db<-50)return fr;
+ for(let i=0;i<N;i++){RE[i]=buf[i]*HANN[i];IM[i]=0}
+ fft(RE,IM);
+ const bin=sr/N;let tot=0,pr=0;
+ for(let k=Math.ceil(80/bin);k<Math.min(N/2,8000/bin);k++){const p=RE[k]*RE[k]+IM[k]*IM[k],f=k*bin;tot+=p;if(f>=2000&&f<4000)pr+=p}
+ fr.pres=10*Math.log10(pr/(tot+1e-20)+1e-12);
+ const M=N/2,sr2=sr/2;for(let i=0;i<M;i++)D[i]=(buf[2*i]+buf[2*i+1])/2;
+ const maxT=Math.min(M-2,Math.floor(sr2/70)),minT=Math.max(2,Math.floor(sr2/1000));
+ let m=0;for(let i=0;i<M;i++)m+=D[i]*D[i];m*=2;
+ for(let t=0;t<=maxT;t++){let r=0;for(let i=0;i<M-t;i++)r+=D[i]*D[i+t];if(t>0)m-=D[t-1]*D[t-1]+D[M-t]*D[M-t];NS[t]=m>1e-12?2*r/m:0}
+ const c=[];let t=1;while(t<maxT&&NS[t]>0)t++;
+ while(t<maxT){while(t<maxT&&NS[t]<=0)t++;let bi=-1,bv=-1;while(t<maxT&&NS[t]>0){if(NS[t]>bv){bv=NS[t];bi=t}t++}if(bi>=minT)c.push(bi)}
+ if(!c.length)return fr;
+ let nmax=0;for(const k of c)nmax=Math.max(nmax,NS[k]);
+ const k=c.find(x=>NS[x]>=0.9*nmax),a=NS[k-1],b=NS[k],g=NS[k+1],den=a-2*b+g,sh=den?0.5*(a-g)/den:0;
+ const cl=Math.min(b-0.25*(a-g)*sh,0.999);
+ if(cl<0.55)return fr;
+ fr.f0=sr2/(k+sh);fr.hnr=Math.max(0,10*Math.log10(cl/(1-cl)));
+ return fr;
+}
+
+function wobAt(frs,end,win=0.3){
+ const w=frs.filter(f=>f.f0&&f.t>end-win&&f.t<=end);if(w.length<6)return null;
+ const ref=w[0].f0,x=w.map(f=>f.t),y=w.map(f=>1200*Math.log2(f.f0/ref));
+ if(Math.max(...y)-Math.min(...y)>300)return null;
+ const n=x.length,mx=x.reduce((s,v)=>s+v,0)/n,my=y.reduce((s,v)=>s+v,0)/n;
+ let sxy=0,sxx=0;for(let i=0;i<n;i++){sxy+=(x[i]-mx)*(y[i]-my);sxx+=(x[i]-mx)**2}
+ const sl=sxx?sxy/sxx:0;let v=0;for(let i=0;i<n;i++)v+=(y[i]-my-sl*(x[i]-mx))**2;
+ return Math.sqrt(v/n);
+}
+const med=a=>{if(!a.length)return null;const s=[...a].sort((p,q)=>p-q);return s[Math.floor(s.length/2)]};
+function summary(frs){
+ const v=frs.filter(f=>f.f0);if(v.length<10)return null;
+ const ws=[];const t0=frs[0].t,t1=frs[frs.length-1].t;
+ for(let t=t0+0.3;t<=t1;t+=0.1){const w=wobAt(frs,t);if(w!=null)ws.push(w)}
+ const ms=v.map(f=>midiOf(f.f0)).sort((p,q)=>p-q);
+ return{hnr:med(v.map(f=>f.hnr)),pres:med(v.map(f=>f.pres)),wob:ws.length?ws.reduce((s,x)=>s+x,0)/ws.length:null,
+  lo:nameOf(ms[Math.floor(ms.length*0.05)]),hi:nameOf(ms[Math.floor(ms.length*0.95)]),dur:t1-t0};
+}
+
+/* ---------- canvases ---------- */
+const cv={};
+for(const id of['map','pitch']){const c=$(id),o={c,x:c.getContext('2d'),W:0,H:0};cv[id]=o;
+ const ro=new ResizeObserver(()=>{const r=c.getBoundingClientRect(),d=devicePixelRatio||1;o.W=r.width;o.H=r.height;c.width=r.width*d;c.height=r.height*d;o.x.setTransform(d,0,0,d,0,0);draw()});ro.observe(c)}
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const themeObs=new MutationObserver(()=>draw());themeObs.observe(document.documentElement,{attributes:true});
+
+function drawMap(){
+ const {x,W,H}=cv.map;if(!W)return;const ink=css('--ink'),mute=css('--mute'),line=css('--line'),shu=css('--shu'),ai=css('--ai');
+ x.clearRect(0,0,W,H);const L=30,B=28,T=8,Rr=8,pw=W-L-Rr,ph=H-T-B;
+ const px=h=>L+pct(h,R.hnr)/100*pw,py=p=>T+ph-pct(p,R.pres)/100*ph;
+ x.strokeStyle=line;x.lineWidth=1;x.strokeRect(L,T,pw,ph);
+ x.beginPath();x.moveTo(px(15),T);x.lineTo(px(15),T+ph);x.moveTo(L,py(-20));x.lineTo(L+pw,py(-20));x.setLineDash([4,4]);x.stroke();x.setLineDash([]);
+ const sm=W<420;x.font=(sm?11:13)+'px "Zen Kaku Gothic New",sans-serif';x.fillStyle=mute;
+ x.textAlign='left';x.fillText('息っぽく明るい',L+8,T+18);x.fillText('息っぽくこもる',L+8,T+ph-8);
+ x.textAlign='right';x.fillText('乾いて芯がある',L+pw-8,T+18);x.fillText('乾いてこもる',L+pw-8,T+ph-8);
+ x.textAlign='center';x.fillText('乾き →',L+pw/2,H-8);
+ x.save();x.translate(14,T+ph/2);x.rotate(-Math.PI/2);x.fillText('抜け →',0,0);x.restore();
+ if(S.target&&S.target.hnr!=null){const a=px(S.target.hnr),b=py(S.target.pres);x.strokeStyle=ai;x.lineWidth=2.5;
+  x.beginPath();x.arc(a,b,16,0,7);x.stroke();x.beginPath();x.arc(a,b,3,0,7);x.fillStyle=ai;x.fill();
+  x.textAlign=a>L+pw-90?'right':'left';x.fillText('ターゲット',a+(a>L+pw-90?-22:22),b+4)}
+ let pts,cur=null;
+ if(S.view){pts=S.view.frames.filter(f=>f.f0);x.fillStyle=ink;x.globalAlpha=0.12;
+  for(const f of pts){x.beginPath();x.arc(px(f.hnr),py(f.pres),2.5,0,7);x.fill()}x.globalAlpha=1;
+  if(S.view.sum)cur={h:S.view.sum.hnr,p:S.view.sum.pres}}
+ else{const now=S.hist.length?S.hist[S.hist.length-1].t:0;pts=S.hist.filter(f=>f.f0&&f.t>now-2);
+  for(const f of pts){x.globalAlpha=Math.max(0.05,1-(now-f.t)/2)*0.5;x.fillStyle=ink;x.beginPath();x.arc(px(f.hnr),py(f.pres),3,0,7);x.fill()}
+  x.globalAlpha=1;if(S.sm.h!=null&&pts.length)cur={h:S.sm.h,p:S.sm.p}}
+ if(cur){x.fillStyle=shu;x.beginPath();x.arc(px(cur.h),py(cur.p),9,0,7);x.fill();x.strokeStyle=css('--bg');x.lineWidth=2;x.stroke()}
+}
+
+function drawPitch(){
+ const {x,W,H}=cv.pitch;if(!W)return;const ink=css('--ink'),mute=css('--mute'),line=css('--line'),shu=css('--shu');
+ x.clearRect(0,0,W,H);const L=40,pw=W-L-6,ph=H-20;
+ let frs,t0,t1;
+ if(S.view){frs=S.view.frames;t0=0;t1=Math.max(S.view.dur,0.1)}
+ else{const now=S.hist.length?S.hist[S.hist.length-1].t:0;t1=now;t0=now-8;frs=S.hist.filter(f=>f.t>t0)}
+ const v=frs.filter(f=>f.f0);
+ if(!v.length){x.fillStyle=mute;x.font='14px "Zen Kaku Gothic New",sans-serif';x.textAlign='center';
+  x.fillText(S.run?'声を出すと線が描かれます':'まだ音がありません',W/2,H/2);return}
+ const c=Math.round(med(v.map(f=>midiOf(f.f0)))),span=W<520?7:9,lo=c-span,hi=c+span;
+ const yy=mm=>10+ph-(mm-lo)/(hi-lo)*ph,xx=t=>L+(t-t0)/(t1-t0)*pw;
+ x.font='11px "Zen Kaku Gothic New",sans-serif';x.textAlign='right';
+ for(let mm=lo;mm<=hi;mm++){const nat=!NOTES[(mm%12+12)%12].includes('#');x.strokeStyle=line;x.globalAlpha=nat?1:0.45;x.lineWidth=mm%12===0?1.6:1;
+  x.beginPath();x.moveTo(L,yy(mm));x.lineTo(L+pw,yy(mm));x.stroke();x.globalAlpha=1;
+  if(nat&&(span<8?true:true)){x.fillStyle=mm%12===0?ink:mute;x.fillText(nameOf(mm),L-6,yy(mm)+4)}}
+ const thr=S.target&&S.target.hnr!=null?S.target.hnr-2:18;
+ x.lineWidth=3;x.lineCap='round';
+ for(let i=1;i<frs.length;i++){const a=frs[i-1],b=frs[i];if(!a.f0||!b.f0||b.t-a.t>0.08)continue;
+  const ma=midiOf(a.f0),mb=midiOf(b.f0);if(Math.abs(ma-mb)>1.5)continue;
+  x.strokeStyle=b.hnr>=thr?shu:ink;x.globalAlpha=b.hnr>=thr?1:0.45;
+  x.beginPath();x.moveTo(xx(a.t),yy(ma));x.lineTo(xx(b.t),yy(mb));x.stroke()}
+ x.globalAlpha=1;
+}
+function draw(){drawMap();drawPitch()}
+
+/* ---------- readouts ---------- */
+function setMeter(k,val,rng,txt){$('b'+k).style.width=val==null?'0':pct(val,rng)+'%';$('v'+k).textContent=val==null?'–':txt}
+function showTarget(){
+ const t=S.target;for(const[k,f,r]of[['H','hnr',R.hnr],['P','pres',R.pres],['W','wob',R.wob]]){const el=$('t'+k);
+  if(t&&t[f]!=null){el.style.display='block';el.style.left=pct(t[f],r)+'%'}else el.style.display='none'}
+ $('tgt').textContent=t?`ターゲット：${t.name}（乾き ${t.hnr.toFixed(1)}dB／抜け ${t.pres.toFixed(1)}dB${t.wob!=null?'／揺れ '+t.wob.toFixed(0)+'セント':''}）`:'ターゲット未設定';
+}
+function readout(fr,wob){
+ if(fr&&fr.f0){const m=midiOf(fr.f0),r=Math.round(m),ce=Math.round((m-r)*100);
+  $('note').textContent=nameOf(m);$('cents').textContent=(ce>0?'+':'')+ce+'¢';$('hz').textContent=fr.f0.toFixed(1)+' Hz';
+  $('cdot').style.left=(50+ce)+'%'}
+ if(S.sm.h!=null){setMeter('H',S.sm.h,R.hnr,S.sm.h.toFixed(1)+' dB');setMeter('P',S.sm.p,R.pres,S.sm.p.toFixed(1)+' dB')}
+ setMeter('W',wob,R.wob,wob==null?'':wob.toFixed(0)+' ¢');
+ if(fr)setMeter('V',fr.db,R.vol,fr.db.toFixed(0)+' dB');
+}
+function status(t,err){const s=$('status');s.textContent=t;s.className=err?'err':''}
+
+/* ---------- live ---------- */
+let TB;
+function tick(){
+ if(!S.run)return;S.an.getFloatTimeDomainData(TB);
+ const fr=analyze(TB,S.ctx.sampleRate);fr.t=S.ctx.currentTime;S.hist.push(fr);
+ while(S.hist.length&&S.hist[0].t<fr.t-10)S.hist.shift();
+ if(S.recFrames)S.recFrames.push(fr);
+ if(fr.f0){const a=0.25;S.sm.h=S.sm.h==null?fr.hnr:S.sm.h+a*(fr.hnr-S.sm.h);S.sm.p=S.sm.p==null?fr.pres:S.sm.p+a*(fr.pres-S.sm.p)}
+ readout(fr,wobAt(S.hist,fr.t));draw();requestAnimationFrame(tick);
+}
+async function startMic(){
+ try{
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('none');
+  S.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+ }catch(e){status('このページではマイクが使えません。claude.ai上ではマイクが制限されています。下の「録音ファイルを解析」は使えます。リアルタイムで使うには、このHTMLを自分のブラウザ（GitHub Pagesなど）で開いてください。',true);return}
+ S.ctx=S.ctx||new AudioContext();await S.ctx.resume();
+ const src=S.ctx.createMediaStreamSource(S.stream);S.an=S.ctx.createAnalyser();S.an.fftSize=N;src.connect(S.an);TB=new Float32Array(N);
+ S.run=true;S.view=null;S.hist=[];$('pitchTitle').textContent='ピッチ曲線（直近8秒）';
+ $('mic').textContent='マイクを停止';$('rec').disabled=false;status('計測中。ロングトーンから試してみてください。');tick();
+}
+function stopMic(){
+ if(S.recFrames)toggleRec();S.run=false;if(S.stream)S.stream.getTracks().forEach(t=>t.stop());S.stream=null;
+ $('mic').textContent='マイクを開始';$('rec').disabled=true;status('停止しました。');draw();
+}
+$('mic').addEventListener('click',()=>S.run?stopMic():startMic());
+
+function toggleRec(){
+ const b=$('rec');
+ if(!S.recFrames){S.recFrames=[];S.chunks=[];
+  try{S.mr=new MediaRecorder(S.stream);S.mr.ondataavailable=e=>S.chunks.push(e.data);S.mr.start()}catch(e){S.mr=null}
+  b.textContent='■ 録音停止';b.classList.add('on');status('録音中…');return}
+ const frs=S.recFrames;S.recFrames=null;b.textContent='● 録音';b.classList.remove('on');
+ const fin=url=>{addTake('テイク'+(++S.n),url,frs);status('テイクを保存しました。')};
+ if(S.mr){S.mr.onstop=()=>fin(URL.createObjectURL(new Blob(S.chunks,{type:S.mr.mimeType})));S.mr.stop()}else fin(null);
+}
+$('rec').addEventListener('click',toggleRec);
+
+/* ---------- file ---------- */
+$('file').addEventListener('change',async e=>{
+ const f=e.target.files[0];if(!f)return;e.target.value='';
+ if(S.run)stopMic();status('「'+f.name+'」を解析中…');
+ try{
+  S.ctx=S.ctx||new AudioContext();
+  const ab=await S.ctx.decodeAudioData(await f.arrayBuffer()),sr=ab.sampleRate,len=ab.length;
+  const mono=new Float32Array(len);for(let c=0;c<ab.numberOfChannels;c++){const d=ab.getChannelData(c);for(let i=0;i<len;i++)mono[i]+=d[i]/ab.numberOfChannels}
+  const hop=Math.round(sr*0.02),frs=[];
+  for(let s=0,n=0;s+N<len;s+=hop,n++){const fr=analyze(mono.subarray(s,s+N),sr);fr.t=(s+N/2)/sr;frs.push(fr);
+   if(n%150===0){status(`「${f.name}」を解析中… ${Math.round(s/len*100)}%`);await new Promise(r=>setTimeout(r,0))}}
+  const tk=addTake(f.name,URL.createObjectURL(f),frs);showView(tk);status('解析しました。テイク一覧から再生やターゲット設定ができます。');
+ }catch(err){status('このファイルは読み込めませんでした。m4a・wav・mp3を試してください。',true)}
+});
+
+/* ---------- takes ---------- */
+function addTake(name,url,frames){
+ const tk={id:Date.now()+Math.random(),name,url,frames,sum:summary(frames)};S.takes.unshift(tk);renderTakes();return tk;
+}
+function dl(v,t,f,inv){if(v==null||!t||t[f]==null)return'';const d=v-t[f],good=inv?d<0:d>0;
+ return ` <span class="d ${Math.abs(d)<0.5?'':good?'up':'dn'}">${d>0?'+':''}${d.toFixed(1)}</span>`}
+function renderTakes(){
+ const el=$('takes');if(!S.takes.length){el.innerHTML='<p class="empty">録音したテイクや解析したファイルがここに並びます。</p>';return}
+ el.innerHTML=S.takes.map((tk,i)=>{const s=tk.sum,t=S.target;
+  const st=s?`<div class="stats"><span>乾き ${s.hnr.toFixed(1)}dB${dl(s.hnr,t,'hnr')}</span><span>抜け ${s.pres.toFixed(1)}dB${dl(s.pres,t,'pres')}</span><span>揺れ ${s.wob==null?'–':s.wob.toFixed(0)+'¢'}${dl(s.wob,t,'wob',true)}</span><span>音域 ${esc(s.lo)}〜${esc(s.hi)}</span></div>`:'<div class="stats"><span>声が検出できませんでした</span></div>';
+  return`<div class="take"><div class="hd"><span class="nm">${esc(tk.name)}</span><span class="d">${s?s.dur.toFixed(1)+'秒':''}</span></div>${st}
+  <div class="act">${tk.url?`<audio controls src="${tk.url}"></audio>`:''}<button class="small" data-a="view" data-i="${i}">曲線を表示</button>${s?`<button class="small" data-a="tgt" data-i="${i}">ターゲットにする</button>`:''}<button class="small" data-a="del" data-i="${i}">削除</button></div></div>`}).join('');
+}
+function showView(tk){S.view={frames:tk.frames,dur:tk.frames.length?tk.frames[tk.frames.length-1].t-tk.frames[0].t:0,sum:tk.sum,t0:tk.frames.length?tk.frames[0].t:0};
+ if(S.view.t0)S.view.frames=tk.frames.map(f=>({...f,t:f.t-S.view.t0}));
+ $('pitchTitle').textContent='ピッチ曲線（'+tk.name+'）';
+ if(tk.sum){S.sm.h=tk.sum.hnr;S.sm.p=tk.sum.pres;readout(null,tk.sum.wob)}draw()}
+function setTarget(t){S.target=t;try{t?localStorage.setItem('vt-target',JSON.stringify(t)):localStorage.removeItem('vt-target')}catch(e){}showTarget();renderTakes();draw()}
+$('takes').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const tk=S.takes[+b.dataset.i];if(!tk)return;
+ if(b.dataset.a==='view'){if(S.run)stopMic();showView(tk)}
+ else if(b.dataset.a==='tgt')setTarget({name:tk.name,hnr:tk.sum.hnr,pres:tk.sum.pres,wob:tk.sum.wob});
+ else{if(tk.url)URL.revokeObjectURL(tk.url);S.takes.splice(+b.dataset.i,1);renderTakes()}});
+$('setT').addEventListener('click',()=>{
+ if(!S.run){status('直近5秒をターゲットにするにはマイクを開始してください。ファイルはテイク一覧の「ターゲットにする」から設定できます。',true);return}
+ const now=S.hist.length?S.hist[S.hist.length-1].t:0,s=summary(S.hist.filter(f=>f.t>now-5));
+ if(!s){status('直近5秒に声が足りません。もう少し歌ってから押してください。',true);return}
+ setTarget({name:'マイク '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}),hnr:s.hnr,pres:s.pres,wob:s.wob});status('ターゲットを設定しました。')});
+$('clrT').addEventListener('click',()=>setTarget(null));
+showTarget();draw();
+}
+</script>
+</body>
+</html>
